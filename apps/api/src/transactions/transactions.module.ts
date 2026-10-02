@@ -1,0 +1,11 @@
+import { Module } from '@nestjs/common';
+import { TransactionsController } from './transactions.controller';
+import { TransactionsRepository } from './transactions.repository';
+import { TransactionsService } from './transactions.service';
+
+/** Ничего не экспортирует; принадлежность категории проверяется на уровне БД (`connect`). */
+@Module({
+  controllers: [TransactionsController],
+  providers: [TransactionsRepository, TransactionsService],
+})
+export class TransactionsModule {}

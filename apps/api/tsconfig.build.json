@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    // nest-cli удаляет dist перед сборкой, а tsbuildinfo вне dist заставил бы tsc пропустить emit
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}

@@ -1,0 +1,152 @@
+// Схема БД трекера расходов на ремонт квартиры.
+// Документация: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ExpenseStatus {
+  PLANNED
+  PAID
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+/// Пользователь системы.
+model User {
+  id                String        @id @default(uuid()) @db.Uuid
+  /// Всегда в нижнем регистре — нормализуется на входе.
+  email             String        @unique
+  firstName         String
+  lastName          String
+  passwordHash      String
+  isActive          Boolean       @default(true)
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+  /// Когда пользователь принял соглашение и политику обработки данных (null — зарегистрирован до их появления).
+  termsAcceptedAt   DateTime?
+  sessions          Session[]
+  projects          Project[]
+  categories        Category[]
+  transactions      Transaction[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@map("users")
+}
+
+/// Сессия входа (одно устройство). Хранит хеш текущего refresh-токена.
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Объект ремонта (квартира).
+model Project {
+  id        String    @id @default(uuid()) @db.Uuid
+  ownerId   String    @db.Uuid
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  budget    Decimal?  @db.Decimal(12, 2)
+  currency  String    @default("RUB") @db.Char(3)
+  rooms     Room[]
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+/// Помещение: кухня, ванная, спальня и т.д.
+model Room {
+  id        String    @id @default(uuid()) @db.Uuid
+  projectId String    @db.Uuid
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  expenses  Expense[]
+
+  @@unique([projectId, name])
+  @@map("rooms")
+}
+
+/// Категория расходов пользователя: материалы, работы, мебель...
+model Category {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  /// HEX-цвет `#rrggbb`, нижний регистр.
+  color        String        @db.Char(7)
+  expenses     Expense[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+model Expense {
+  id         String        @id @default(uuid()) @db.Uuid
+  projectId  String        @db.Uuid
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  categoryId String        @db.Uuid
+  category   Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  roomId     String?       @db.Uuid
+  room       Room?         @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  title      String
+  amount     Decimal       @db.Decimal(12, 2)
+  quantity   Decimal?      @db.Decimal(12, 3)
+  vendor     String?
+  status     ExpenseStatus @default(PAID)
+  spentAt    DateTime      @db.Date
+  note       String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([projectId, spentAt])
+  @@index([categoryId])
+  @@index([roomId])
+  @@map("expenses")
+}
+
+/// Операция пользователя: доход или расход в одной из его категорий.
+model Transaction {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId  String          @db.Uuid
+  category    Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// Всегда положительная; направление задаёт `type`.
+  amount      Decimal         @db.Decimal(12, 2)
+  type        TransactionType
+  description String?
+  date        DateTime        @db.Date
+  createdAt   DateTime        @default(now())
+
+  @@index([userId, date])
+  @@index([categoryId])
+  @@map("transactions")
+}
